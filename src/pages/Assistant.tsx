@@ -34,25 +34,56 @@ const Assistant = () => {
       recognitionRef.current.continuous = false;
       recognitionRef.current.interimResults = false;
       recognitionRef.current.lang = 'en-US';
+      recognitionRef.current.maxAlternatives = 1;
+
+      recognitionRef.current.onstart = () => {
+        console.log('Speech recognition started');
+        setIsListening(true);
+      };
 
       recognitionRef.current.onresult = async (event: any) => {
+        console.log('Speech recognition result:', event);
         const transcript = event.results[0][0].transcript;
+        console.log('Transcript:', transcript);
         setTranscript(transcript);
         setIsListening(false);
         await processQuestion(transcript);
       };
 
       recognitionRef.current.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
+        console.error('Speech recognition error:', event.error, event);
         setIsListening(false);
+        
+        let errorMessage = "Failed to recognize speech. Please try again.";
+        
+        switch(event.error) {
+          case 'not-allowed':
+          case 'permission-denied':
+            errorMessage = "Microphone access denied. Please allow microphone permissions in your browser settings.";
+            break;
+          case 'no-speech':
+            errorMessage = "No speech detected. Please speak clearly and try again.";
+            break;
+          case 'audio-capture':
+            errorMessage = "No microphone found. Please connect a microphone and try again.";
+            break;
+          case 'network':
+            errorMessage = "Network error. Please check your internet connection and try again.";
+            break;
+          case 'aborted':
+            errorMessage = "Speech recognition was stopped.";
+            break;
+        }
+        
         toast({
-          title: "Error",
-          description: "Failed to recognize speech. Please try again.",
+          title: "Speech Recognition Error",
+          description: errorMessage,
           variant: "destructive",
         });
       };
 
       recognitionRef.current.onend = () => {
+        console.log('Speech recognition ended');
         setIsListening(false);
       };
     }
@@ -110,24 +141,48 @@ const Assistant = () => {
     }
   };
 
-  const toggleListening = () => {
+  const toggleListening = async () => {
     if (!recognitionRef.current) {
       toast({
         title: "Not supported",
-        description: "Speech recognition is not supported in your browser",
+        description: "Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.",
         variant: "destructive",
       });
       return;
     }
 
     if (isListening) {
+      console.log('Stopping speech recognition');
       recognitionRef.current.stop();
       setIsListening(false);
     } else {
-      setTranscript('');
-      setResponse('');
-      recognitionRef.current.start();
-      setIsListening(true);
+      try {
+        // Request microphone permission explicitly
+        console.log('Requesting microphone permission');
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        console.log('Starting speech recognition');
+        setTranscript('');
+        setResponse('');
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (error: any) {
+        console.error('Microphone permission error:', error);
+        setIsListening(false);
+        
+        let errorMessage = "Failed to access microphone.";
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          errorMessage = "Microphone access denied. Please allow microphone permissions in your browser settings and refresh the page.";
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = "No microphone found. Please connect a microphone and try again.";
+        }
+        
+        toast({
+          title: "Microphone Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
     }
   };
 
